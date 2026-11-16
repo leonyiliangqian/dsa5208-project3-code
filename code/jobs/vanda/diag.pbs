@@ -1,0 +1,103 @@
+#!/bin/bash
+# Diagnostic job for the stall in two-node job 1507215: the placement probe
+# with one rank per node bound to PE=8 cores (the whole 8-CPU cpuset of each
+# chunk), launched by PBS tm, printed nothing until the walltime. Not a
+# correctness or timing job; it builds only the placement probe.
+#
+# Same chunk shape as 1507215 (2 x 8 CPUs, place=scatter) so the cpusets
+# match; memory is cut to what the probe needs (1507215 peaked at 69 MB).
+# Each step changes one thing, runs under its own time limit with a process
+# snapshot before expiry and a cleanup check after, and the job continues
+# past a stalled step. All steps are required except d8 (optional):
+#   d1 launch only (no binding, no MPI program)        -> tm launch itself
+#   d2 bind ppr:2:node:PE=4, hostname                    -> binding, part of cpuset
+#   d3 bind ppr:1:node:PE=8, hostname                    -> binding, whole cpuset
+#   d4 traced probe 2 x PE=4 per node (control)          -> MPI + OpenMP, known-good shape
+#   d5 traced probe 1 x PE=8 per node, launcher verbose  -> the 1507215 configuration
+#   d6 traced probe 1 x PE=8, head node only             -> one node vs two
+#   d7 traced probe 1 per node, --bind-to none, 8 threads-> without MPI binding
+#   d8 traced probe 1 x PE=8 per node via pbs_tmrsh      -> tm plm vs rsh agent (optional)
+#   d9 d5 repeated without verbose output                -> repeatability
+# The probe's trace lines show, per rank, the last stage reached (start,
+# MPI_Init, OpenMP team, each collective, MPI_Finalize).
+#
+# Submit only through jobs/vanda/submit.sh (explicit queue and allocation).
+#
+#PBS -N p3_diag
+#PBS -l select=2:ncpus=8:mpiprocs=8:mem=4gb
+#PBS -l place=scatter
+#PBS -l walltime=00:20:00
+#PBS -j oe
+
+set -uo pipefail
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+
+JOB=${PBS_JOBID%%.*}
+JOB_START_S=$(date +%s)
+RUN_ID=${RUN_ID:-diag-$(date -u +%Y%m%dT%H%M%SZ)-$JOB}
+OUT=${RUNS_ROOT:-artifacts/cluster/runs}/$RUN_ID
+mkdir -p "$OUT/env"
+exec > >(tee "$OUT/job.log") 2>&1
+echo "run_id=$RUN_ID job=${PBS_JOBID} host=$(hostname) start=$(date -Is) source_rev=${SOURCE_GIT_REV:-unset}"
+
+source jobs/vanda/multinode_setup.sh
+
+BIN=bin/vanda-$JOB
+export OUT BIN MPI
+WALLTIME_S=$(sed -n 's/^#PBS -l walltime=\([0-9]*\):\([0-9]*\):\([0-9]*\).*/\1 \2 \3/p' "$0" \
+             | awk '{print $1*3600 + $2*60 + $3}')
+WALLTIME_S=${WALLTIME_S:-1200}
+LEFTOVER_PATTERN="vanda-$JOB/"
+export LEFTOVER_JOBID=${PBS_JOBID:-}
+source jobs/vanda/gates.sh
+echo "walltime_s=$WALLTIME_S end_reserve_s=$END_RESERVE_S gate_overhead_s=$(gate_overhead_s) remote_exec=$REMOTE_EXEC"
+
+HEAD_ENTRY=$(sort -u "$PBS_NODEFILE" | while read -r h; do
+    [ "$(short "$h")" = "$(short "$(hostname)")" ] && echo "$h"; done)
+PROBE_ENV="OMP_PROC_BIND=close OMP_PLACES=cores PLACEMENT_EXPECT_BOUND=1 PLACEMENT_TRACE=1"
+PROBE_X="-x OMP_NUM_THREADS -x OMP_PROC_BIND -x OMP_PLACES -x PLACEMENT_EXPECT_BOUND -x PLACEMENT_EXPECT_HOSTS -x PLACEMENT_TRACE"
+VERBOSE="--mca plm_base_verbose 10 --mca odls_base_verbose 10 --mca rmaps_base_verbose 10"
+if command -v pbs_tmrsh >/dev/null 2>&1; then
+    TMRSH="mpirun --prefix $PREFIX --hostfile $PBS_NODEFILE --mca plm rsh --mca plm_rsh_agent $(command -v pbs_tmrsh) -x PATH -x LD_LIBRARY_PATH"
+else
+    TMRSH=""
+fi
+echo "head_entry=$HEAD_ENTRY pbs_tmrsh=${TMRSH:+yes}"
+
+gate allocation  90 critical env ALLOC_EXPECT_NODES=2 ALLOC_CPUS_PER_NODE=8 \
+    bash jobs/vanda/allocation_check.sh "$OUT" "$NODES" "$LAUNCH"
+gate build      120 critical make BIN="$BIN" "$BIN/placement_check"
+
+gate d1_launch_only 60 required $MPI -np 2 --map-by ppr:1:node --bind-to none hostname
+gate d2_bind_pe4    60 required $MPI -np 4 --map-by ppr:2:node:PE=4 --bind-to core --report-bindings hostname
+gate d3_bind_pe8    60 required $MPI -np 2 --map-by ppr:1:node:PE=8 --bind-to core --report-bindings \
+                                   --display-map hostname
+gate d4_probe_pe4   60 required env $PROBE_ENV OMP_NUM_THREADS=4 PLACEMENT_EXPECT_HOSTS=2 \
+    $MPI -np 4 --map-by ppr:2:node:PE=4 --bind-to core --report-bindings $PROBE_X "$BIN/placement_check"
+gate d5_probe_pe8   60 required env $PROBE_ENV OMP_NUM_THREADS=8 PLACEMENT_EXPECT_HOSTS=2 \
+    $MPI $VERBOSE -np 2 --map-by ppr:1:node:PE=8 --bind-to core --report-bindings --display-map \
+    $PROBE_X "$BIN/placement_check"
+gate d6_probe_pe8_head 60 required env $PROBE_ENV OMP_NUM_THREADS=8 PLACEMENT_EXPECT_HOSTS=1 \
+    $MPI -np 1 --host "$HEAD_ENTRY" --map-by ppr:1:node:PE=8 --bind-to core --report-bindings \
+    $PROBE_X "$BIN/placement_check"
+gate d7_probe_nobind 60 required env $PROBE_ENV OMP_NUM_THREADS=8 PLACEMENT_EXPECT_HOSTS=2 \
+    $MPI -np 2 --map-by ppr:1:node --bind-to none --report-bindings $PROBE_X "$BIN/placement_check"
+# Optional comparison: needs pbs_tmrsh, which may be absent; its result is
+# listed but does not decide the verdict.
+if [ -n "$TMRSH" ]; then
+    gate d8_probe_pe8_tmrsh 60 optional env $PROBE_ENV OMP_NUM_THREADS=8 PLACEMENT_EXPECT_HOSTS=2 \
+        $TMRSH -np 2 --map-by ppr:1:node:PE=8 --bind-to core --report-bindings $PROBE_X "$BIN/placement_check"
+else
+    skip d8_probe_pe8_tmrsh optional "pbs_tmrsh not found"
+fi
+gate d9_probe_pe8_repeat 60 required env $PROBE_ENV OMP_NUM_THREADS=8 PLACEMENT_EXPECT_HOSTS=2 \
+    $MPI -np 2 --map-by ppr:1:node:PE=8 --bind-to core --report-bindings $PROBE_X "$BIN/placement_check"
+
+# Last stage reached by each rank in each probe step, for reading the result.
+for f in "$OUT"/gate_d*_probe*.log; do
+    echo "== $(basename "$f" .log)"
+    grep '^trace ' "$f" | awk '{r=$4" "$3; s[r]=$6} END {for (k in s) print "   last", k, s[k]}' | sort
+done | tee "$OUT/trace_summary.txt"
+
+verdict >/dev/null && finish 0
+finish 1

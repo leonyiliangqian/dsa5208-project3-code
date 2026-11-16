@@ -1,0 +1,80 @@
+#!/bin/bash
+# One-GPU validation of the OpenMP target solver. Not a benchmark: it answers
+# whether the kernel runs on the GPU and gives the reference forces. NOT
+# APPROVED: submit only after the user approves it, through jobs/vanda/submit.sh.
+#
+# Gates, in order:
+#   build      nvc++ -mp=gpu, on the compute node (critical)
+#   device     mandatory offload, kernel on a device with separate memory (critical)
+#   gpu_gate   tests/validate_gpu.py --expect-device (required)
+#   gpu_busy   nvidia-smi sees the GPU working during a mandatory-offload run (required)
+#   compiled   compiler messages about GPU code generation (optional, a record only)
+# The result rests on what the running program did. The wording of -Minfo messages
+# is not relied on; the full messages stay in gate_build.log.
+#
+#PBS -N p3_gpu_validate
+#PBS -l select=1:ngpus=1:ncpus=36:mem=60gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -uo pipefail
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+
+JOB=${PBS_JOBID%%.*}
+JOB_START_S=$(date +%s)
+RUN_ID=${RUN_ID:-gpu_validate-$(date -u +%Y%m%dT%H%M%SZ)-$JOB}
+OUT=${RUNS_ROOT:-artifacts/cluster/runs}/$RUN_ID
+mkdir -p "$OUT/env"
+exec > >(tee "$OUT/job.log") 2>&1
+echo "run_id=$RUN_ID job=${PBS_JOBID} host=$(hostname) start=$(date -Is) source_rev=${SOURCE_GIT_REV:-unset}"
+
+GPU_MODULE=${GPU_MODULE:-nvhpc-hpcx-cuda12/26.1}
+PY_MODULE=${PY_MODULE:-Python/3.11.5-GCCcore-13.2.0}
+JOB_CXX=${JOB_CXX:-nvc++}
+JOB_OMPFLAGS=${JOB_OMPFLAGS:--mp=gpu -Minfo=mp}
+type module >/dev/null 2>&1 || source /etc/profile >/dev/null 2>&1
+if type module >/dev/null 2>&1; then
+    module purge
+    module load "$GPU_MODULE" || { echo "FATAL: cannot load $GPU_MODULE"; exit 3; }
+elif [ "${ALLOW_NO_MODULES:-0}" != 1 ]; then
+    echo "FATAL: no module command on this node"; exit 3
+fi
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 7))' 2>/dev/null; then
+    type module >/dev/null 2>&1 && module load "$PY_MODULE"
+fi
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 7))' \
+    || { echo "FATAL: python3 >= 3.7 not available (tried $PY_MODULE)"; exit 3; }
+
+{
+    echo "== date";     date -Is
+    echo "== host";     hostname -f
+    echo "== pbs";      env | grep -E '^(PBS_|NCPUS|OMP_|CUDA_VISIBLE|NVIDIA_VISIBLE|SOURCE_GIT_REV)' | sort
+    echo "== cpus_allowed"; grep -E 'Cpus_allowed_list|Mems_allowed_list' /proc/self/status
+    echo "== lscpu";    lscpu
+    echo "== modules";  module list 2>&1 || true
+    echo "== compiler"; "$JOB_CXX" --version 2>&1
+    echo "== nvidia-smi"; nvidia-smi 2>&1 || echo "nvidia-smi not available"
+    echo "== nvidia-smi -L"; nvidia-smi -L 2>&1 || true
+    echo "== mpi";      mpirun --version 2>&1 | head -2 || true
+    ompi_info --parsable --all 2>/dev/null | grep mpi_built_with_cuda_support:value || true
+    ompi_info 2>/dev/null | grep -E 'MCA (plm|ras):' || true
+} > "$OUT/env/environment.txt" 2>&1
+
+BIN=bin/vanda-$JOB
+WALLTIME_S=$(sed -n 's/^#PBS -l walltime=\([0-9]*\):\([0-9]*\):\([0-9]*\).*/\1 \2 \3/p' "$0" \
+             | awk '{print $1*3600 + $2*60 + $3}')
+WALLTIME_S=${WALLTIME_S:-1800}
+LEFTOVER_PATTERN="vanda-$JOB/"
+export LEFTOVER_JOBID=${PBS_JOBID:-}
+source jobs/vanda/gates.sh
+MAKE_VARS=(BIN="$BIN" CXX="$JOB_CXX" GPU_CXX="$JOB_CXX" CXXFLAGS="-O3 -std=c++17" GPU_OMPFLAGS="$JOB_OMPFLAGS")
+
+gate build 300 critical make "${MAKE_VARS[@]}" "$BIN/bh_serial" "$BIN/bh_gpu"
+gate device 60 critical env OMP_TARGET_OFFLOAD=MANDATORY "$BIN/bh_gpu" --require-device --device-check
+gate gpu_gate 900 required env OMP_NUM_THREADS=36 make "${MAKE_VARS[@]}" EVIDENCE="$OUT" \
+    GPU_GATE_ARGS=--expect-device check-gpu
+gate gpu_busy 200 required bash jobs/vanda/gpu_busy.sh "$OUT" "$BIN/bh_gpu"
+gate compiled 20 optional grep -iE 'generating.*(nvidia|tesla|gpu)' "$OUT/gate_build.log"
+
+verdict >/dev/null && finish 0
+finish 1

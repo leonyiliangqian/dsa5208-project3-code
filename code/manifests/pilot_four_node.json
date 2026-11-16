@@ -1,0 +1,17 @@
+{
+  "id": "pilot-four-node-v1",
+  "status": "proposed",
+  "description": "Sizing for the formal 256-core series: largest core counts first, then the serial baseline on this pool, then weak sizes in rising memory so an out-of-memory case costs least. Provisional sizes. Pilot evidence, not formal results.",
+  "defaults": {"theta": 0.5, "leaf_size": 8, "seed": 42, "schedule": "dynamic", "chunk": 64, "steps": 2, "warmup": 1, "nodes": 1, "reps": 1, "timeout_s": 60, "n": 1000000},
+  "cases": [
+    {"study": "strong", "program": "hybrid", "ranks": 256, "threads": 1, "nodes": 4, "timeout_s": 30},
+    {"study": "strong", "program": "hybrid", "ranks": 32, "threads": 8, "nodes": 4, "timeout_s": 30},
+    {"study": "strong", "program": "hybrid", "ranks": 128, "threads": 1, "nodes": 2, "timeout_s": 30},
+    {"study": "strong", "program": "hybrid", "ranks": 64, "threads": 1, "timeout_s": 30},
+    {"study": "strong", "program": "serial", "timeout_s": 260},
+    {"study": "weak", "program": "hybrid", "ranks": 256, "threads": 1, "nodes": 4, "n": 6400000, "timeout_s": 120},
+    {"study": "weak", "program": "hybrid", "ranks": 32, "threads": 8, "nodes": 4, "n": 6400000, "timeout_s": 110},
+    {"study": "weak", "program": "hybrid", "ranks": 256, "threads": 1, "nodes": 4, "n": 12800000, "timeout_s": 270},
+    {"study": "weak", "program": "hybrid", "ranks": 32, "threads": 8, "nodes": 4, "n": 12800000, "timeout_s": 240}
+  ]
+}

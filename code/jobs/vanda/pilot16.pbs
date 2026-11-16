@@ -1,0 +1,19 @@
+#!/bin/bash
+# Smaller free pilot for use while the 64-core pilot waits for a whole node: the same runs on
+# 16 cores (manifests/pilot_single_node_16core.json). It sets provisional sizes only. The node
+# may be shared and of either CPU model, and it cannot test 64 ranks on a node. Pilot evidence,
+# not formal results. NOT APPROVED: submit only after the user approves it, through
+# jobs/vanda/submit.sh.
+#
+#PBS -N p3_pilot16
+#PBS -l select=1:ncpus=16:mpiprocs=16:mem=16gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+RUN_PREFIX=pilot16
+MANIFEST=${MANIFEST:-manifests/pilot_single_node_16core.json}
+EXPECT_NODES=1 CPUS_PER_NODE=${SIM_CPUS_PER_NODE:-16} PLACE_R=4 PLACE_T=4
+REQUIRE_FROZEN=0
+# PBS starts a job in $HOME, so this relative path needs the cd (job 1514774).
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+source jobs/vanda/measure.sh

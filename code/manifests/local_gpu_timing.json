@@ -1,0 +1,8 @@
+{
+  "id": "local-gpu-timing-v1",
+  "status": "local pipeline test only",
+  "description": "Tiny inputs for tests/gpu_timing_e2e.sh. Not a measurement.",
+  "defaults": {"program": "gpu", "study": "gpu_timing", "theta": 0.5, "leaf_size": 8, "steps": 2, "warmup": 1, "seed": 42,
+               "threads": 2, "nodes": 1, "reps": 3, "backend": ["device", "cpu"], "timeout_s": 60},
+  "cases": [{"n": 1000}, {"n": 3000}]
+}

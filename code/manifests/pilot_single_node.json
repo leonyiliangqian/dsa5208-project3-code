@@ -1,0 +1,21 @@
+{
+  "id": "pilot-single-node-v1",
+  "status": "proposed",
+  "description": "Single-node pilot on one 64-core Vanda node: serial runtime and memory against N, the hybrid range at N=1e6, schedule contrast, leaf size, accuracy and cost against theta. One repetition each; pilot evidence for choosing sizes, not formal results. Same runs as the earlier hard-coded pilot.pbs.",
+  "defaults": {"theta": 0.5, "leaf_size": 8, "steps": 2, "warmup": 1, "seed": 42,
+               "schedule": "dynamic", "chunk": 64, "nodes": 1, "reps": 1, "timeout_s": 600},
+  "cases": [
+    {"study": "serial_n", "program": "serial", "n": [100000, 300000, 1000000]},
+    {"study": "serial_n", "program": "serial", "n": 2000000, "timeout_s": 1200},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 1, "timeout_s": 900},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 64},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 8, "threads": 8},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 64, "threads": 1},
+    {"study": "schedule", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 64,
+     "schedule": ["static", "guided"], "chunk": 0},
+    {"study": "leaf", "program": "serial", "n": 300000, "leaf_size": [4, 16, 32]},
+    {"study": "accuracy", "program": "validate", "n": 20000, "theta": [0.3, 0.5, 0.7, 0.9], "timeout_s": 300},
+    {"study": "theta_cost", "program": "hybrid", "n": 1000000, "ranks": 8, "threads": 8,
+     "theta": [0.3, 0.7, 0.9]}
+  ]
+}

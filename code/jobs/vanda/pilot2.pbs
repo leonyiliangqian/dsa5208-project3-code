@@ -1,0 +1,19 @@
+#!/bin/bash
+# Free rehearsal of pilot4.pbs on two whole nodes: the same gates with all 128 cores, then
+# runtime and peak memory at 128 cores (manifests/pilot_two_node.json). It tests launch at
+# 64 ranks per node before anything is charged, but not 256 cores or the charged pool.
+# NOT APPROVED: submit only after the user approves it, through jobs/vanda/submit.sh.
+#
+#PBS -N p3_pilot2
+#PBS -l select=2:ncpus=64:mpiprocs=64:mem=120gb
+#PBS -l place=scatter
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+RUN_PREFIX=pilot2
+MANIFEST=${MANIFEST:-manifests/pilot_two_node.json}
+EXPECT_NODES=2 CPUS_PER_NODE=${SIM_CPUS_PER_NODE:-64} PLACE_R=8 PLACE_T=8
+REQUIRE_FROZEN=0 SCALE_CHECKS=1
+# PBS starts a job in $HOME, so this relative path needs the cd (job 1514774).
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+source jobs/vanda/measure.sh

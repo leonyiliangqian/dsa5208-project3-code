@@ -1,0 +1,118 @@
+{
+  "id": "local-e2e-v1",
+  "status": "local pipeline test only: tiny inputs in Docker, never results",
+  "description": "Exercises every study shape (serial, hybrid strong and weak series, ranks x threads, schedules, leaf, theta, accuracy) and the timeout path on tiny inputs so manifests, collection, analysis and figure generation can be tested end to end.",
+  "defaults": {
+    "theta": 0.5,
+    "leaf_size": 8,
+    "steps": 2,
+    "warmup": 1,
+    "seed": 42,
+    "schedule": "dynamic",
+    "chunk": 64,
+    "nodes": 1,
+    "reps": 2,
+    "timeout_s": 120,
+    "n": 4000
+  },
+  "cases": [
+    {
+      "study": "strong",
+      "program": "serial"
+    },
+    {
+      "study": "serial_n",
+      "program": "serial",
+      "n": [
+        1000,
+        4000
+      ]
+    },
+    {
+      "study": "strong",
+      "program": "hybrid",
+      "ranks": [
+        1,
+        2,
+        4
+      ],
+      "threads": 1
+    },
+    {
+      "study": "strong",
+      "program": "hybrid",
+      "ranks": [
+        1,
+        2
+      ],
+      "threads": 2
+    },
+    {
+      "study": "ranks_threads",
+      "program": "hybrid",
+      "ranks": 1,
+      "threads": 4
+    },
+    {
+      "study": "schedule",
+      "program": "hybrid",
+      "ranks": 1,
+      "threads": 4,
+      "schedule": [
+        "static",
+        "guided"
+      ],
+      "chunk": 0
+    },
+    {
+      "study": "weak",
+      "program": "hybrid",
+      "ranks": 1,
+      "threads": 2,
+      "n": 2000
+    },
+    {
+      "study": "weak",
+      "program": "hybrid",
+      "ranks": 2,
+      "threads": 2,
+      "n": 4000
+    },
+    {
+      "study": "leaf",
+      "program": "serial",
+      "leaf_size": [
+        4,
+        16
+      ]
+    },
+    {
+      "study": "theta",
+      "program": "hybrid",
+      "ranks": 2,
+      "threads": 2,
+      "theta": [
+        0.3,
+        0.7
+      ]
+    },
+    {
+      "study": "accuracy",
+      "program": "validate",
+      "n": 2000,
+      "theta": [
+        0.3,
+        0.7
+      ],
+      "reps": 1
+    },
+    {
+      "study": "timeout_probe",
+      "program": "serial",
+      "n": 2000000,
+      "steps": 50,
+      "reps": 1,
+      "timeout_s": 3
+    }
+  ]
+}

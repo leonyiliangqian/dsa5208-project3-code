@@ -1,0 +1,13 @@
+{
+  "id": "gpu-timing-v1",
+  "status": "frozen 2026-11-04 sizes from GPU job 1514775; fixed before any CPU-backend timing on Vanda",
+  "description": "Study 7, G2: the same bh_gpu binary and workloads on one GPU and on the 36 CPU cores of the same allocation. Only the force traversal is offloaded. Worst case fits the job's deadline.",
+  "defaults": {"program": "gpu", "study": "gpu_timing", "theta": 0.5, "leaf_size": 8, "steps": 5, "warmup": 1, "seed": 42,
+               "threads": 36, "nodes": 1, "reps": 3, "backend": ["device", "cpu"]},
+  "cases": [
+    {"n": 100000, "timeout_s": 60},
+    {"n": 300000, "timeout_s": 60},
+    {"n": 1000000, "timeout_s": 120},
+    {"n": 3000000, "timeout_s": 180}
+  ]
+}

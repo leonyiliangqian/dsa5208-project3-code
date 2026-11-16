@@ -1,0 +1,19 @@
+#!/bin/bash
+# Formal single-node measurements from a FROZEN manifest (default
+# manifests/studies_single_node.json, frozen after pilots 1523275 and 1522998).
+# The walltime covers the worst case of scripts/plan_budget.py. SCALE_CHECKS adds the 64 x 1
+# placement probe and bound runs against serial on all 64 cores before any timing.
+# Submit only after approval, through jobs/vanda/submit.sh.
+#
+#PBS -N p3_bench1
+#PBS -l select=1:ncpus=64:mpiprocs=64:mem=120gb
+#PBS -l walltime=05:00:00
+#PBS -j oe
+
+RUN_PREFIX=bench1
+MANIFEST=${MANIFEST:-manifests/studies_single_node.json}
+EXPECT_NODES=1 CPUS_PER_NODE=${SIM_CPUS_PER_NODE:-64} PLACE_R=8 PLACE_T=8
+REQUIRE_FROZEN=1 SCALE_CHECKS=1
+# PBS starts a job in $HOME, so this relative path needs the cd (job 1514774).
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+source jobs/vanda/measure.sh

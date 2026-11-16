@@ -1,0 +1,21 @@
+#!/bin/bash
+# 256-core correctness and sizing, before any formal 256-core run: one CPU model on four
+# hosts, placement, data exchange and bound runs against serial with all 256 cores, then
+# runtime and peak memory at the largest planned sizes (manifests/pilot_four_node.json).
+# Does not fit auto_free, so it needs batch_cpu through `auto` with a project, at charge
+# rate 1. NOT APPROVED: submit only after the user approves the charge, through
+# jobs/vanda/submit.sh. Pilot evidence, not formal results (one repetition each).
+#
+#PBS -N p3_pilot4
+#PBS -l select=4:ncpus=64:mpiprocs=64:mem=240gb
+#PBS -l place=scatter
+#PBS -l walltime=00:45:00
+#PBS -j oe
+
+RUN_PREFIX=pilot4
+MANIFEST=${MANIFEST:-manifests/pilot_four_node.json}
+EXPECT_NODES=4 CPUS_PER_NODE=${SIM_CPUS_PER_NODE:-64} PLACE_R=8 PLACE_T=8
+REQUIRE_FROZEN=0 SCALE_CHECKS=1
+# PBS starts a job in $HOME, so this relative path needs the cd (job 1514774).
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+source jobs/vanda/measure.sh

@@ -1,0 +1,19 @@
+#!/bin/bash
+# Formal studies on 16 cores from a FROZEN manifest (manifests/studies_16core.json), so serial
+# runtime against N and the parameter studies do not wait for a whole 64-core node. The node
+# may be shared and of either CPU model; speedups stay inside this job. It cannot show 64 ranks
+# per node or 256 cores. NOT APPROVED: submit only after the user approves it, through
+# jobs/vanda/submit.sh.
+#
+#PBS -N p3_bench16
+#PBS -l select=1:ncpus=16:mpiprocs=16:mem=16gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+
+RUN_PREFIX=bench16
+MANIFEST=${MANIFEST:-manifests/studies_16core.json}
+EXPECT_NODES=1 CPUS_PER_NODE=${SIM_CPUS_PER_NODE:-16} PLACE_R=4 PLACE_T=4
+REQUIRE_FROZEN=1 SCALE_CHECKS=1
+# PBS starts a job in $HOME, so this relative path needs the cd (job 1514774).
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+source jobs/vanda/measure.sh

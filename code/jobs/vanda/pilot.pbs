@@ -1,0 +1,19 @@
+#!/bin/bash
+# Single-node benchmark pilot: runtime and peak memory against N, the hybrid
+# range, schedules, leaf size, accuracy and cost against theta, to choose the
+# formal problem sizes (manifests/pilot_single_node.json). Pilot evidence, not
+# formal results (one repetition each). NOT APPROVED: submit only after the
+# user approves it, through jobs/vanda/submit.sh.
+#
+#PBS -N p3_pilot1
+#PBS -l select=1:ncpus=64:mpiprocs=64:mem=120gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+RUN_PREFIX=pilot1
+MANIFEST=${MANIFEST:-manifests/pilot_single_node.json}
+EXPECT_NODES=1 CPUS_PER_NODE=${SIM_CPUS_PER_NODE:-64} PLACE_R=8 PLACE_T=8
+REQUIRE_FROZEN=0
+# PBS starts a job in $HOME, so this relative path needs the cd (job 1514774).
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+source jobs/vanda/measure.sh

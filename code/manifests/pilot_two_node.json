@@ -1,0 +1,14 @@
+{
+  "id": "pilot-two-node-v1",
+  "status": "proposed",
+  "description": "Free rehearsal of pilot-four-node-v1 at 128 cores. Provisional sizes. Pilot evidence, not formal results.",
+  "defaults": {"theta": 0.5, "leaf_size": 8, "seed": 42, "schedule": "dynamic", "chunk": 64, "steps": 2, "warmup": 1, "nodes": 1, "reps": 1, "timeout_s": 90, "n": 1000000},
+  "cases": [
+    {"study": "strong", "program": "hybrid", "ranks": 128, "threads": 1, "nodes": 2, "timeout_s": 30},
+    {"study": "strong", "program": "hybrid", "ranks": 16, "threads": 8, "nodes": 2, "timeout_s": 30},
+    {"study": "strong", "program": "hybrid", "ranks": 64, "threads": 1, "timeout_s": 30},
+    {"study": "strong", "program": "serial", "timeout_s": 260},
+    {"study": "weak", "program": "hybrid", "ranks": 128, "threads": 1, "nodes": 2, "n": 6400000, "timeout_s": 150},
+    {"study": "weak", "program": "hybrid", "ranks": 16, "threads": 8, "nodes": 2, "n": 6400000, "timeout_s": 140}
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "pilot-single-node-v2",
+  "status": "proposed",
+  "description": "The 20 runs of v1 in a new order with shorter 64-core limits, so the runs that set the formal sizes finish even if every one uses its whole limit. Pilot evidence, not formal results.",
+  "defaults": {"theta": 0.5, "leaf_size": 8, "steps": 2, "warmup": 1, "seed": 42,
+               "schedule": "dynamic", "chunk": 64, "nodes": 1, "reps": 1, "timeout_s": 300},
+  "cases": [
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 64},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 8, "threads": 8},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 64, "threads": 1},
+    {"study": "serial_n", "program": "serial", "n": [100000, 300000]},
+    {"study": "serial_n", "program": "serial", "n": 1000000, "timeout_s": 600},
+    {"study": "schedule", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 64,
+     "schedule": ["static", "guided"], "chunk": 0},
+    {"study": "theta_cost", "program": "hybrid", "n": 1000000, "ranks": 8, "threads": 8,
+     "theta": [0.3, 0.7, 0.9]},
+    {"study": "accuracy", "program": "validate", "n": 20000, "theta": [0.3, 0.5, 0.7, 0.9], "timeout_s": 120},
+    {"study": "leaf", "program": "serial", "n": 300000, "leaf_size": [4, 16, 32]},
+    {"study": "serial_n", "program": "serial", "n": 2000000, "timeout_s": 600},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 1, "timeout_s": 600}
+  ]
+}

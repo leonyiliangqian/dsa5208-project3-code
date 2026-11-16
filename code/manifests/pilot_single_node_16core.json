@@ -1,0 +1,23 @@
+{
+  "id": "pilot-single-node-16core-v1",
+  "status": "proposed",
+  "description": "The 20 runs of pilot-single-node-v2, same sizes and order, on 16 cores of a possibly shared node, for use while the 64-core pilot waits. Limits are shorter so that all 20 fit the walltime; a timed-out run gives a lower bound. Sets provisional sizes only: it cannot answer the 64-core checks. Pilot evidence, not formal results.",
+  "defaults": {"theta": 0.5, "leaf_size": 8, "steps": 2, "warmup": 1, "seed": 42,
+               "schedule": "dynamic", "chunk": 64, "nodes": 1, "reps": 1, "timeout_s": 60},
+  "cases": [
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 16},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 4, "threads": 4},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 16, "threads": 1},
+    {"study": "serial_n", "program": "serial", "n": 100000},
+    {"study": "serial_n", "program": "serial", "n": 300000, "timeout_s": 120},
+    {"study": "serial_n", "program": "serial", "n": 1000000, "timeout_s": 300},
+    {"study": "schedule", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 16,
+     "schedule": ["static", "guided"], "chunk": 0},
+    {"study": "theta_cost", "program": "hybrid", "n": 1000000, "ranks": 4, "threads": 4, "theta": 0.3, "timeout_s": 120},
+    {"study": "theta_cost", "program": "hybrid", "n": 1000000, "ranks": 4, "threads": 4, "theta": [0.7, 0.9]},
+    {"study": "accuracy", "program": "validate", "n": 20000, "theta": [0.3, 0.5, 0.7, 0.9], "timeout_s": 120},
+    {"study": "leaf", "program": "serial", "n": 300000, "leaf_size": [4, 16, 32], "timeout_s": 100},
+    {"study": "serial_n", "program": "serial", "n": 2000000, "timeout_s": 500},
+    {"study": "hybrid_range", "program": "hybrid", "n": 1000000, "ranks": 1, "threads": 1, "timeout_s": 300}
+  ]
+}

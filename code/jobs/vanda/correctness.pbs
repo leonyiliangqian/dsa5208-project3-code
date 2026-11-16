@@ -1,0 +1,98 @@
+#!/bin/bash
+# First Vanda correctness job: build on the compute node, verify placement and
+# rerun the serial and hybrid correctness gates. Not a benchmark.
+#
+# Submit only through jobs/vanda/submit.sh, which supplies the queue (-q) and
+# allocation (-P) explicitly; they are deliberately not hardcoded here.
+#
+#PBS -N p3_correctness
+#PBS -l select=1:ncpus=8:mpiprocs=8:mem=16gb
+#PBS -l walltime=00:30:00
+#PBS -j oe
+
+set -uo pipefail
+cd "${PBS_O_WORKDIR:?run under PBS, from the code/ directory}"
+
+JOB=${PBS_JOBID%%.*}
+JOB_START_S=$(date +%s)
+RUN_ID=${RUN_ID:-correctness-$(date -u +%Y%m%dT%H%M%SZ)-$JOB}
+# RUNS_ROOT is overridden only for local simulation, so it never mixes with cluster evidence.
+OUT=${RUNS_ROOT:-artifacts/cluster/runs}/$RUN_ID
+mkdir -p "$OUT/env"
+exec > >(tee "$OUT/job.log") 2>&1
+echo "run_id=$RUN_ID job=${PBS_JOBID} host=$(hostname) start=$(date -Is) source_rev=${SOURCE_GIT_REV:-unset}"
+
+# ---------------------------------------------------------------- modules
+MPI_MODULE=${MPI_MODULE:-OpenMPI/4.1.6-GCC-13.2.0}
+PY_MODULE=${PY_MODULE:-Python/3.11.5-GCCcore-13.2.0}
+# PBS runs this in a non-login shell, where `module` may not be defined yet.
+type module >/dev/null 2>&1 || source /etc/profile >/dev/null 2>&1
+if type module >/dev/null 2>&1; then
+    module purge
+    module load "$MPI_MODULE" || { echo "FATAL: cannot load $MPI_MODULE"; exit 3; }
+elif [ "${ALLOW_NO_MODULES:-0}" != 1 ]; then
+    echo "FATAL: no module command on this node"; exit 3
+fi
+# The test scripts need Python >= 3.7; load a matching Python only if needed.
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 7))' 2>/dev/null; then
+    type module >/dev/null 2>&1 && module load "$PY_MODULE"
+fi
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 7))' \
+    || { echo "FATAL: python3 >= 3.7 not available (tried $PY_MODULE)"; exit 3; }
+
+# ---------------------------------------------------------------- environment record
+{
+    echo "== date";      date -Is
+    echo "== host";      hostname -f
+    echo "== pbs";       env | grep -E '^(PBS_|NCPUS|OMP_)' | sort
+    echo "== nodefile";  sort "${PBS_NODEFILE:-/dev/null}" | uniq -c
+    echo "== cpus_allowed"; grep -E 'Cpus_allowed_list|Mems_allowed_list' /proc/self/status
+    echo "== nproc";     nproc
+    echo "== lscpu";     lscpu
+    echo "== numactl";   numactl --hardware 2>&1 || true
+    echo "== memory";    free -g 2>&1 || true
+    echo "== os";        head -4 /etc/os-release; uname -r
+    echo "== modules";   module list 2>&1 || true
+    echo "== compilers"; mpicxx --version | head -1; mpicxx --showme 2>&1 || true
+    echo "== mpi";       mpirun --version 2>&1 | head -2
+    echo "== ompi_info"; ompi_info 2>/dev/null | grep -iE 'Open MPI:|Thread support|MCA (plm|ras): tm' || true
+    echo "== python";    python3 --version
+    echo "== source";    echo "submitted_from_rev=${SOURCE_GIT_REV:-unset}"; git rev-parse HEAD 2>&1; git status --porcelain --untracked-files=no -- . 2>&1 | head -20
+} > "$OUT/env/environment.txt" 2>&1
+echo "environment recorded in $OUT/env/environment.txt"
+
+# ---------------------------------------------------------------- gates
+# Build on this compute node: -march=native must describe the compute CPU.
+BIN=bin/vanda-$JOB
+export CXXFLAGS="-O3 -std=c++17 -Wall -Wextra -march=native"
+NCPUS_ALLOC=${NCPUS:-8}
+export OUT BIN
+# Time limits: about 10x the durations in job 1503779 (all gates 70 s).
+WALLTIME_S=$(sed -n 's/^#PBS -l walltime=\([0-9]*\):\([0-9]*\):\([0-9]*\).*/\1 \2 \3/p' "$0" \
+             | awk '{print $1*3600 + $2*60 + $3}')
+WALLTIME_S=${WALLTIME_S:-1800}
+LEFTOVER_PATTERN="vanda-$JOB/"
+export LEFTOVER_JOBID=${PBS_JOBID:-}
+source jobs/vanda/gates.sh
+
+gate build     240 critical    make BIN="$BIN" all hybrid
+gate toolchain  90 critical    make BIN="$BIN" toolchain
+gate place_2x4  60 required make BIN="$BIN" placement PLACE_R=2 PLACE_T=4
+gate place_4x2  60 required make BIN="$BIN" placement PLACE_R=4 PLACE_T=2
+gate place_8x1  60 required make BIN="$BIN" placement PLACE_R=8 PLACE_T=1
+gate serial    240 required make BIN="$BIN" EVIDENCE="$OUT" check
+need serial hybrid required && \
+gate hybrid    600 required make BIN="$BIN" EVIDENCE="$OUT" check-hybrid \
+                    MPIRUN_FLAGS="--bind-to none" HYBRID_GATE_ARGS="--max-cores $NCPUS_ALLOC"
+gate sanitize  300 required make BIN="$BIN" sanitize
+
+# One recorded hybrid run with bound placement, to exercise the run recorder
+# under PBS. A smoke test, not a measurement. Same mapping as place_2x4.
+need place_2x4 recorder required && \
+gate recorder  120 required env OMP_NUM_THREADS=4 OMP_PROC_BIND=close OMP_PLACES=cores \
+    python3 scripts/run_case.py --out "$OUT" --case smoke_bound_2x4 --rep 1 --allocated-cores 8 \
+    --launcher "mpirun -np 2 --map-by ppr:2:node:PE=4 --bind-to core -x OMP_NUM_THREADS -x OMP_PROC_BIND -x OMP_PLACES" \
+    -- "$BIN/bh_hybrid" --n 20000 --steps 2 --schedule dynamic --chunk 64
+
+verdict >/dev/null && finish 0
+finish 1
